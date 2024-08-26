@@ -294,7 +294,7 @@ def compute_robustLR(params, args):
     
 
 
-def flame(local_model, update_params, global_model, args):
+def flame(local_model, update_params, global_model, args, norm_writer, epoch, excluded_frequency):
     cos = torch.nn.CosineSimilarity(dim=0, eps=1e-6).cuda()
     cos_list=[]
     local_model_vector = []
@@ -308,9 +308,10 @@ def flame(local_model, update_params, global_model, args):
             # cos_i.append(round(cos_ij.item(),4))
             cos_i.append(cos_ij.item())
         cos_list.append(cos_i)
-    num_clients = max(int(args.frac * args.num_users), 1)
-    num_malicious_clients = int(args.malicious * num_clients)
-    num_benign_clients = num_clients - num_malicious_clients
+    num_clients = 10
+    # num_clients = max(int(args.frac * args.num_users), 1)
+    # num_malicious_clients = int(args.malicious * num_clients)
+    # num_benign_clients = num_clients - num_malicious_clients
     clusterer = hdbscan.HDBSCAN(min_cluster_size=num_clients//2 + 1,min_samples=1,allow_single_cluster=True).fit(cos_list)
     print(clusterer.labels_)
     benign_client = []
@@ -330,25 +331,37 @@ def flame(local_model, update_params, global_model, args):
         for i in range(len(clusterer.labels_)):
             if clusterer.labels_[i] == max_cluster_index:
                 benign_client.append(i)
-    for i in range(len(local_model_vector)):
-        # norm_list = np.append(norm_list,torch.norm(update_params_vector[i],p=2))  # consider BN
-        norm_list = np.append(norm_list,torch.norm(parameters_dict_to_vector(update_params[i]),p=2).item())  # no consider BN
+        for i in range(len(local_model_vector)):
+            # norm_list = np.append(norm_list,torch.norm(update_params_vector[i],p=2))  # consider BN
+            norm_list = np.append(norm_list,torch.norm(parameters_dict_to_vector(update_params[i]),p=2).item())  # no consider BN
     print(benign_client)
-   
-    for i in range(len(benign_client)):
-        if benign_client[i] < num_malicious_clients:
-            args.wrong_mal+=1
-        else:
-            #  minus per benign in cluster
-            args.right_ben += 1
-    args.turn+=1
-    if math.isclose(args.malicious, 0) == False:
-        print('proportion of malicious are selected:',args.wrong_mal/(num_malicious_clients*args.turn))
-    print('proportion of benign are selected:',args.right_ben/(num_benign_clients*args.turn))
+    
+    print(excluded_frequency)
+    for i in range(args.num_users):
+        if i not in benign_client:
+            excluded_frequency[i] += 1
+
+    # for i in range(len(benign_client)):
+    #     if benign_client[i] < num_malicious_clients:
+    #         args.wrong_mal+=1
+    #     else:
+    #         #  minus per benign in cluster
+    #         args.right_ben += 1
+    # args.turn+=1
+    # if math.isclose(args.malicious, 0) == False:
+    #     print('proportion of malicious are selected:',args.wrong_mal/(num_malicious_clients*args.turn))
+    # print('proportion of benign are selected:',args.right_ben/(num_benign_clients*args.turn))
     
     clip_value = np.median(norm_list)
+    gama_list = []
+    for i in range(len(norm_list)):
+        gama_list.append(clip_value/norm_list[i])
+    norm_values_dict = {f'Client_{i}': value for i, value in enumerate(gama_list)}
+    norm_writer.add_scalars('flame_norm', norm_values_dict, epoch)
+
+    # clip_value = np.median(norm_list)
     for i in range(len(benign_client)):
-        gama = clip_value/norm_list[i]
+        gama = clip_value/norm_list[benign_client[i]]
         if gama < 1:
             for key in update_params[benign_client[i]]:
                 if key.split('.')[-1] == 'num_batches_tracked':

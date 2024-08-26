@@ -107,6 +107,11 @@ if __name__ == '__main__':
         if math.isclose(args.malicious, 0) == False:
             ba_writer = SummaryWriter("../hlogs/BA/{}_{}_{}_{}_{}_{}_{}_{}".format(args.dataset, args.attack, args.malicious, args.defence, args.heter, args.alpha, args.lr_b, args.lr))
         ma_writer = SummaryWriter("../hlogs/MA/{}_{}_{}_{}_{}_{}_{}_{}".format(args.dataset, args.attack, args.malicious, args.defence, args.heter, args.alpha, args.lr_b, args.lr))
+    elif args.defence == 'flame':
+        flame_norm_writer = SummaryWriter("../hlogs/flame_norm/{}_{}_{}_{}_{}_{}_{}_{}".format(args.dataset, args.attack, args.malicious, args.defence, args.heter, args.alpha, args.lr_b, args.lr))
+        if math.isclose(args.malicious, 0) == False:
+            ba_writer = SummaryWriter("../hlogs/BA/{}_{}_{}_{}_{}_{}_{}_{}".format(args.dataset, args.attack, args.malicious, args.defence, args.heter, args.alpha, args.lr_b, args.lr))
+        ma_writer = SummaryWriter("../hlogs/MA/{}_{}_{}_{}_{}_{}_{}_{}".format(args.dataset, args.attack, args.malicious, args.defence, args.heter, args.alpha, args.lr_b, args.lr))
     else:
         if math.isclose(args.malicious, 0) == False:
             ba_writer = SummaryWriter("../hlogs/BA/{}_{}_{}_{}_{}_{}_{}_{}".format(args.dataset, args.attack, args.malicious, args.defence, args.heter, args.alpha, args.lr_b, args.lr))
@@ -221,6 +226,8 @@ if __name__ == '__main__':
         args.krum_distance=[]
     if args.defence == "fl_defender":
         score_history = np.zeros([args.num_users], dtype = float)
+    if args.defence == "flame":
+        excluded_frequency = [0] * args.num_users
     
     adversaries = [i for i in range(args.num_users) if i % num_classes == 1]
 
@@ -316,7 +323,7 @@ if __name__ == '__main__':
             fltrust_norm = get_update(fltrust_norm, w_glob)
             w_glob = fltrust(w_updates, fltrust_norm, w_glob, args)
         elif args.defence == 'flame':
-            w_glob = flame(w_locals,w_updates,w_glob, args)
+            w_glob = flame(w_locals,w_updates,w_glob, args, flame_norm_writer, iter, excluded_frequency)
         elif args.defence == 'fl_defender':
             w_glob = fl_defender(copy.deepcopy(net_glob), copy.deepcopy(local_models), score_history, idxs_users, fldefender_file, iter)
         else:
@@ -384,3 +391,5 @@ if __name__ == '__main__':
     print("Training accuracy: {:.2f}".format(acc_train))
     print("Testing accuracy: {:.2f}".format(acc_test))
     
+    if args.defence == 'flame':
+        print(np.array(excluded_frequency)/args.epochs)

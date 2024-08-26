@@ -80,7 +80,7 @@ def args_parser():
     parser.add_argument('--attack_begin', type=int, default=0,
                         help="the accuracy begin to attack")
     
-    parser.add_argument('--gpu', type=int, default=2,
+    parser.add_argument('--gpu', type=int, default=5,
                         help="GPU ID, -1 for CPU")
     parser.add_argument('--robustLR_threshold', type=int, default=4, 
                         help="break ties when votes sum to 0")
