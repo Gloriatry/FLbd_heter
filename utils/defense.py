@@ -430,3 +430,63 @@ def fl_defender(global_model, local_models, score_history, selected_users, filen
     local_weights = [local_model.state_dict() for local_model in local_models]
     
     return average_weights(local_weights, trust)
+
+def vectorize_net(net):
+    return torch.cat([p.view(-1) for p in net.parameters()])
+
+def load_model_weight(net, weight):
+    index_bias = 0
+    for p_index, p in enumerate(net.parameters()):
+        p.data = weight[index_bias:index_bias + p.numel()].view(p.size())
+        index_bias += p.numel()
+
+def multi(client_models, device, excluded_frequency):
+    vectorize_nets = [vectorize_net(cm).detach().cpu().numpy() for cm in client_models]
+
+    cos_dis = [0.0] * len(vectorize_nets)
+    length_dis = [0.0] * len(vectorize_nets)
+    manhattan_dis = [0.0] * len(vectorize_nets)
+
+    for i, g_i in enumerate(vectorize_nets):
+        for j in range(len(vectorize_nets)):
+            if i != j:
+                g_j = vectorize_nets[j]
+
+                cosine_distance = float(
+                    (1 - np.dot(g_i, g_j) / (np.linalg.norm(g_i) * np.linalg.norm(g_j))) ** 2)   #Compute the different value of cosine distance
+                manhattan_distance = float(np.linalg.norm(g_i - g_j, ord=1))    #Compute the different value of Manhattan distance
+                length_distance = np.abs(float(np.linalg.norm(g_i) - np.linalg.norm(g_j)))    #Compute the different value of Euclidean distance
+
+                cos_dis[i] += cosine_distance
+                length_dis[i] += length_distance
+                manhattan_dis[i] += manhattan_distance
+    
+    tri_distance = np.vstack([cos_dis, manhattan_dis, length_dis]).T
+
+    cov_matrix = np.cov(tri_distance.T)
+    inv_matrix = np.linalg.inv(cov_matrix)
+
+    ma_distances = []
+    for i, g_i in enumerate(vectorize_nets):
+        t = tri_distance[i]
+        ma_dis = np.dot(np.dot(t, inv_matrix), t.T)
+        ma_distances.append(ma_dis)
+    
+    scores = ma_distances
+    print(scores)
+
+    p = 0.6
+    p_num = p*len(scores)
+    topk_ind = np.argpartition(scores, int(p_num))[:int(p_num)]   #sort
+
+    for i in range(len(scores)):
+        if i not in topk_ind:
+            excluded_frequency[i] += 1
+    print(excluded_frequency)
+
+    aggregated_grad = np.mean(np.array(vectorize_nets)[topk_ind, :], axis=0).astype(np.float32)
+
+    aggregated_model = client_models[0]  # slicing which doesn't really matter
+    load_model_weight(aggregated_model, torch.from_numpy(aggregated_grad).to(device))
+
+    return aggregated_model

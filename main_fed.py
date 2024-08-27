@@ -12,7 +12,7 @@ from models.Update import LocalUpdate
 from utils.info import print_exp_details, write_info_to_accfile, get_base_info
 from utils.options import args_parser
 from utils.sampling import mnist_iid, mnist_noniid, cifar_iid, cifar_noniid, dirichlet, mnist7
-from utils.defense import fltrust, multi_krum, get_update, RLR, flame, fl_defender
+from utils.defense import fltrust, multi_krum, get_update, RLR, flame, fl_defender, multi
 import torch
 from torchvision import datasets, transforms
 import numpy as np
@@ -109,6 +109,10 @@ if __name__ == '__main__':
         ma_writer = SummaryWriter("../hlogs/MA/{}_{}_{}_{}_{}_{}_{}_{}".format(args.dataset, args.attack, args.malicious, args.defence, args.heter, args.alpha, args.lr_b, args.lr))
     elif args.defence == 'flame':
         flame_norm_writer = SummaryWriter("../hlogs/flame_norm/{}_{}_{}_{}_{}_{}_{}_{}".format(args.dataset, args.attack, args.malicious, args.defence, args.heter, args.alpha, args.lr_b, args.lr))
+        if math.isclose(args.malicious, 0) == False:
+            ba_writer = SummaryWriter("../hlogs/BA/{}_{}_{}_{}_{}_{}_{}_{}".format(args.dataset, args.attack, args.malicious, args.defence, args.heter, args.alpha, args.lr_b, args.lr))
+        ma_writer = SummaryWriter("../hlogs/MA/{}_{}_{}_{}_{}_{}_{}_{}".format(args.dataset, args.attack, args.malicious, args.defence, args.heter, args.alpha, args.lr_b, args.lr))
+    elif args.defence == 'multi':
         if math.isclose(args.malicious, 0) == False:
             ba_writer = SummaryWriter("../hlogs/BA/{}_{}_{}_{}_{}_{}_{}_{}".format(args.dataset, args.attack, args.malicious, args.defence, args.heter, args.alpha, args.lr_b, args.lr))
         ma_writer = SummaryWriter("../hlogs/MA/{}_{}_{}_{}_{}_{}_{}_{}".format(args.dataset, args.attack, args.malicious, args.defence, args.heter, args.alpha, args.lr_b, args.lr))
@@ -226,7 +230,7 @@ if __name__ == '__main__':
         args.krum_distance=[]
     if args.defence == "fl_defender":
         score_history = np.zeros([args.num_users], dtype = float)
-    if args.defence == "flame":
+    if args.defence == "flame" or "multi":
         excluded_frequency = [0] * args.num_users
     
     adversaries = [i for i in range(args.num_users) if i % num_classes == 1]
@@ -326,12 +330,15 @@ if __name__ == '__main__':
             w_glob = flame(w_locals,w_updates,w_glob, args, flame_norm_writer, iter, excluded_frequency)
         elif args.defence == 'fl_defender':
             w_glob = fl_defender(copy.deepcopy(net_glob), copy.deepcopy(local_models), score_history, idxs_users, fldefender_file, iter)
+        elif args.defence == 'multi':
+            net_glob = multi(copy.deepcopy(local_models), args.device, excluded_frequency)
         else:
             print("Wrong Defense Method")
             os._exit(0)
         
         # copy weight to net_glob
-        net_glob.load_state_dict(w_glob)
+        if args.defence != 'multi':
+            net_glob.load_state_dict(w_glob)
 
         # print loss
         loss_avg = sum(loss_locals) / len(loss_locals)
@@ -391,5 +398,5 @@ if __name__ == '__main__':
     print("Training accuracy: {:.2f}".format(acc_train))
     print("Testing accuracy: {:.2f}".format(acc_test))
     
-    if args.defence == 'flame':
-        print(np.array(excluded_frequency)/args.epochs)
+    if args.defence == 'flame' or 'multi':
+        print("Excluded frquency:", excluded_frequency)
